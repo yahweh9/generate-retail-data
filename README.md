@@ -59,7 +59,7 @@ By default the script generates 30 days starting `2026-06-01` — change `START_
 
 Everything is a plain constant near the top of `generate_retail_sales.py` — no need to touch the generation logic to reshape the dataset:
 
-| Want to change... | Edit this |
+| Want to change | Edit this |
 |---|---|
 | How much history to generate | `START_DATE`, `NUM_DAYS` |
 | Store names / revenue targets | `STORE_WEEKDAY_TARGETS` (one Mon-Sun list per store) |
