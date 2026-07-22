@@ -6,17 +6,19 @@ Designed to be invoked once per day (e.g. by a GitHub Actions cron) and
 produce that single day's messy raw export, landing in a dt=YYYY-MM-DD
 partition the way a real S3-backed Bronze layer would. Every random
 draw is keyed off (SEED, purpose, index) via numpy SeedSequence, so
-running a single date in isolation reproduces exactly what a full
-backfill would have produced for that date -- no run-to-run state.
+running a single date in isolation reproduces exactly what generating
+it as part of any larger date range would have produced -- no
+run-to-run state, no dependency on which dates you ask for or in what
+order.
 
 Usage:
-    python generate_retail_sales.py --backfill        # initial history
-    python generate_retail_sales.py --date 2026-07-22  # one day (cron)
-    python generate_retail_sales.py                    # defaults to yesterday
+    python generate_retail_sales.py --start-date 2026-06-01 --end-date 2026-06-30  # a range
+    python generate_retail_sales.py --date 2026-07-22   # a single day
+    python generate_retail_sales.py --today             # today's date
+    python generate_retail_sales.py                     # defaults to yesterday (e.g. daily cron)
 """
 
 import argparse
-import math
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -28,8 +30,11 @@ import pandas as pd
 # ---------------------------------------------------------------------------
 
 SEED = 42
-START_DATE = date(2026, 6, 1)
-NUM_DAYS = 30
+# Fixed, arbitrary anchor for RNG seeding only -- NOT a "start date" for
+# generation (that's controlled entirely by --date/--start-date/--end-date/
+# --today at runtime). Keeping this fixed is what makes any given calendar
+# date always seed identically, no matter what range you ask to generate.
+RNG_EPOCH = date(2026, 6, 1)
 OUTPUT_ROOT = "output"
 
 # Mon -> Sun daily revenue targets per store (date.weekday() indexes into this).
@@ -186,7 +191,7 @@ def week_start_friday(d: date) -> date:
 
 def build_week_offers(offer_week_key: int, catalog: pd.DataFrame) -> dict:
     """offer_week_key should be week_start_friday(day).toordinal() -- offers
-    rotate Friday-to-Thursday, independent of START_DATE/day_offset."""
+    rotate Friday-to-Thursday, independent of RNG_EPOCH/day_offset."""
     rng = make_rng(TAG_OFFERS, offer_week_key)
     long_tail = catalog[~catalog["is_hero"]]
     n_items = int(rng.integers(*OFFER_ITEMS_PER_WEEK))
@@ -347,7 +352,7 @@ def apply_messiness(df: pd.DataFrame, rng: np.random.Generator) -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 
 def generate_day(day: date):
-    day_offset = (day - START_DATE).days
+    day_offset = (day - RNG_EPOCH).days
     drift_week_index = day_offset // 7          # target-drift week (unchanged, arbitrary anchor)
     offer_week_key = week_start_friday(day).toordinal()  # offer week: Friday -> following Thursday
 
@@ -394,19 +399,34 @@ def print_summary(day: date, df: pd.DataFrame, out_path: Path, weekly_mults: dic
 # ---------------------------------------------------------------------------
 
 def parse_args():
-    p = argparse.ArgumentParser(description="Generate one (or many) day's raw retail sales CSV.")
-    p.add_argument("--date", type=str, help="Single date YYYY-MM-DD to generate (e.g. daily cron run).")
-    p.add_argument("--backfill", action="store_true",
-                   help=f"Generate all {NUM_DAYS} days starting {START_DATE.isoformat()} (initial history).")
-    return p.parse_args()
+    p = argparse.ArgumentParser(description="Generate one or more days of raw retail sales CSV.")
+    p.add_argument("--date", type=str, help="Generate a single date (YYYY-MM-DD).")
+    p.add_argument("--start-date", type=str,
+                    help="Start of an inclusive date range to generate (YYYY-MM-DD). Requires --end-date.")
+    p.add_argument("--end-date", type=str,
+                    help="End of an inclusive date range to generate (YYYY-MM-DD). Requires --start-date.")
+    p.add_argument("--today", action="store_true", help="Generate today's date.")
+    args = p.parse_args()
+
+    if bool(args.start_date) != bool(args.end_date):
+        p.error("--start-date and --end-date must be used together.")
+    if sum([bool(args.date), bool(args.start_date), args.today]) > 1:
+        p.error("Use only one of --date, --start-date/--end-date, or --today.")
+    return args
 
 
 def main():
     args = parse_args()
     if args.date:
         days = [date.fromisoformat(args.date)]
-    elif args.backfill:
-        days = [START_DATE + timedelta(days=d) for d in range(NUM_DAYS)]
+    elif args.start_date:
+        start = date.fromisoformat(args.start_date)
+        end = date.fromisoformat(args.end_date)
+        if end < start:
+            raise SystemExit("--end-date must be on or after --start-date")
+        days = [start + timedelta(days=d) for d in range((end - start).days + 1)]
+    elif args.today:
+        days = [date.today()]
     else:
         days = [date.today() - timedelta(days=1)]  # default: "yesterday", mimics a nightly batch job
 

@@ -22,19 +22,20 @@ Anyone who wants a free, unlimited supply of realistic retail transaction data t
 ```bash
 pip install -r requirements.txt
 
-# generate a full month of history (uses START_DATE/NUM_DAYS in the script)
-python generate_retail_sales.py --backfill
+# generate a date range (any start/end you like)
+python generate_retail_sales.py --start-date 2026-06-01 --end-date 2026-06-30
 
 # generate just one day
 python generate_retail_sales.py --date 2026-06-15
+
+# generate today's date
+python generate_retail_sales.py --today
 
 # no args: defaults to "yesterday" -- handy for a daily scheduled job
 python generate_retail_sales.py
 ```
 
-Each run writes one CSV per day to `output/dt=<date>/sales_<date>.csv` (Hive-style partitioning), so you can load a single day, a date range, or the whole history depending on what you're practicing.
-
-By default the script generates 30 days starting `2026-06-01` — change `START_DATE`/`NUM_DAYS` at the top of `generate_retail_sales.py` to shift or extend the range.
+Each run writes one CSV per day to `output/dt=<date>/sales_<date>.csv` (Hive-style partitioning), so you can load a single day, any date range, or years of history depending on what you're practicing. There's no hardcoded date range in the script itself -- you choose it every time you run it.
 
 ## Output schema
 
@@ -61,7 +62,7 @@ Everything is a plain constant near the top of `generate_retail_sales.py` — no
 
 | Want to change | Edit this |
 |---|---|
-| How much history to generate | `START_DATE`, `NUM_DAYS` |
+| How much history to generate | Nothing to edit -- pass `--start-date`/`--end-date`, `--date`, or `--today` at runtime |
 | Store names / revenue targets | `STORE_WEEKDAY_TARGETS` (one Mon-Sun list per store) |
 | The product catalog / prices | `PRODUCT_NAMES` |
 | How much of the catalog is "hero" vs. long-tail | `HERO_COUNT_PER_GROUP` |
@@ -70,7 +71,7 @@ Everything is a plain constant near the top of `generate_retail_sales.py` — no
 | How messy the raw data is | `MESSINESS` (or set every rate to `0` for perfectly clean output) |
 | Reproducibility | `SEED` -- same seed always produces the same data |
 
-Reruns are deterministic: regenerating any single date always reproduces exactly the same rows, whether you generate it alone or as part of a full `--backfill`.
+Reruns are deterministic: regenerating any single date always reproduces exactly the same rows, whether you generate it alone or as part of a much larger `--start-date`/`--end-date` range.
 
 ## File structure
 
