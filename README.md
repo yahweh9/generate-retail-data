@@ -72,7 +72,7 @@ Everything is a plain constant near the top of `generate_retail_sales.py` — no
 
 Reruns are deterministic: regenerating any single date always reproduces exactly the same rows, whether you generate it alone or as part of a full `--backfill`.
 
-## Project structure
+## File structure
 
 ```
 retail-data/
